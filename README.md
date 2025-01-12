@@ -11,7 +11,7 @@
 You can install the development version of `{herder}` like so:
 
 ``` r
-devtools::install("/PATH/TO/herder/S")
+devtools::install("/PATH/TO/herder/")
 ```
 
 ## Run
