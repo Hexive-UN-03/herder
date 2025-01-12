@@ -11,7 +11,7 @@
 You can install the development version of `{herder}` like so:
 
 ``` r
-# FILL THIS IN! HOW CAN PEOPLE INSTALL YOUR DEV PACKAGE?
+devtools::install("/PATH/TO/herder/S")
 ```
 
 ## Run
