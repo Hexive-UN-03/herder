@@ -1,0 +1,17 @@
+Package: herder
+Title: herder
+Version: 0.0.0.9000
+Authors@R: 
+    person("Hayden", "Hamsher", , "hamsh010@umn.edu", role = c("aut", "cre"))
+Description: A shiny app for easing the manipulation and visualization of .vcf files that have an associated metadata table.
+License: MIT + file LICENSE
+Imports: config, dplyr, ggplot2, golem, here, shiny, shinyWidgets
+Encoding: UTF-8
+RoxygenNote: 7.3.2
+Suggests: spelling, testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Language: en-US
+NeedsCompilation: no
+Packaged: 2025-01-12 08:17:20 UTC; hamsh010
+Author: Hayden Hamsher [aut, cre]
+Maintainer: Hayden Hamsher <hamsh010@umn.edu>
