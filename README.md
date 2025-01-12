@@ -19,7 +19,7 @@ devtools::install("/PATH/TO/herder/")
 You can launch the application by running:
 
 ``` r
-herder::run_app()
+herder::run_app(dataset = "/PATH/TO/metadata.csv", vcf_path = "/PATH/TO/vcf.vcf")
 ```
 
 ## About
