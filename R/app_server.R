@@ -259,7 +259,7 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
       writeLines(as.character(input$selected_samples), "./output/samples.txt")
       # run a call to fast.af
         # fast_af.sh vcf_path region samplefile_path output_path
-      system(paste("./scripts/fast_af.sh", norm_vcf_path, roi, "./output/samples.txt", "./output/roi_af.tsv", sep = " "))
+      system(paste("./scripts/fast_af", norm_vcf_path, roi, 8, "./output/samples.txt", "./output/roi_af.tsv", sep = " "))
       # withProgress(message = "Calculating Allele Frequencies...", value = 0, {
       #   incProgress(1/n, detail = paste("Finished Subregion ", i))
       # })
