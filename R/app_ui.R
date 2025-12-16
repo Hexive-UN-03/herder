@@ -68,7 +68,7 @@ app_ui <- function(request, dataset = NULL, vcf_path = NULL) {
                           ),
                           fluidRow(
                             column(
-                              textInput("save_name", label = NULL, placeholder = "Subset name"), actionButton("save_button", "Save Subset"), align = "center", width = 12
+                              textInput("save_name", label = NULL, placeholder = "Subset name"), actionButton("save_button", "Save Subset"), actionButton("vcf_generate_button", "Generate VCF"), align = "center", width = 12
                             )
                           )
                  ),

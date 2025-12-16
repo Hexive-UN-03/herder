@@ -159,7 +159,7 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
           ),
           column(
             actionButton(paste("focus", input$save_name, sep = "_"),"Focus Subset"),
-            downloadButton(paste("download", input$save_name, sep = "_"),"Download Subset"),
+            downloadButton(paste("download", input$save_name, sep = "_"),"Download Names"),
             actionButton(paste("delete", input$save_name, sep = "_"),"Delete Subset"), width = 6, align = "right"
           )
           , width = 12)
@@ -217,7 +217,7 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
         ),
         column(
           actionButton(paste("focus", name, sep = "_"),"Focus Subset"),
-          downloadButton(paste("download", name, sep = "_"),"Download Subset"),
+          downloadButton(paste("download", name, sep = "_"),"Download Names"),
           actionButton(paste("delete", name, sep = "_"),"Delete Subset"), width = 6, align = "right"
         )
         , width = 12)
@@ -320,6 +320,14 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
       }
     })
   }), input$af_zoom_click)
+  
+  bindEvent(observe({
+    if (input$save_name != ""){
+      writeLines(as.character(input$selected_samples), "./output/samples.txt")
+      system(paste("./scripts/vcf_trimmer", norm_vcf_path, "./output/samples.txt", paste(dirname(norm_vcf_path), "/", input$save_name, ".vcf.gz", sep = ""), sep = " "))
+      updateTextInput(session = session, inputId = "save_name", value = "")
+    }
+  }), input$vcf_generate_button)
 
   # slider cutoff logic, using a filtered df to pass to the other plots
   bindEvent(observe({
