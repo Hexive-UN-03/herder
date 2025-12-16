@@ -78,7 +78,7 @@ process_csv <- function(filename, validation_vcf_path){
   }
 
   # get vcf samples
-  system(paste("bcftools query -l", validation_vcf_path, "> ./output/vcf_samples.txt", sep = " "))
+  system(paste("./scripts/sample_lister", validation_vcf_path, "./output/vcf_samples.txt", sep = " "))
   con = file("./output/vcf_samples.txt", "r")
   vcf_samples <- readLines(con = con)
   close(con)
