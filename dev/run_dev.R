@@ -16,4 +16,5 @@ golem::detach_all_attached()
 golem::document_and_reload()
 
 # Run the application
-run_app(dataset = "../../herder/ALL_WGS_HORSES_test.csv", vcf_path = "../../herder/joint_call.goldenPath.20240827.vep.vcf.gz")
+run_app(dataset = "../../herder/ALL_WGS_HORSES_test.csv", vcf_path = "../../herder/joint_call.goldenPath.20240827.vep.vcf.gz", gtf_path = "../../herder/Equus_caballus.EquCab3.0.109.gtf.gz")
+

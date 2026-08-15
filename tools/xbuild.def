@@ -1,0 +1,30 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+# Container holding the cross toolchain, for building the Windows binaries on a machine
+# that doesn't have (and can't install) mingw-w64.
+#
+# Why a container at all: MSI's Rocky 8 nodes are on glibc 2.28, and every prebuilt
+# mingw/llvm-mingw tarball wants 2.32+. conda-forge no longer ships a Linux-hosted mingw
+# either. Ubuntu 22.04 has it in apt, so we just borrow Ubuntu.
+#
+#   apptainer build --fakeroot xbuild.sif xbuild.def
+#   apptainer exec xbuild.sif bash -c 'cd tools && cmake --preset windows && cmake --build build/windows -j8'
+#
+# If /tmp is small (it's a 4G tmpfs on MSI), point apptainer somewhere roomier first:
+#   export APPTAINER_TMPDIR=$HOME/opt/apptmp APPTAINER_CACHEDIR=$HOME/.apptainer/cache
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        mingw-w64 mingw-w64-tools \
+        cmake ninja-build make git ca-certificates \
+        autoconf automake libtool m4 pkg-config perl file xz-utils \
+        gettext autopoint
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%test
+    x86_64-w64-mingw32-g++-posix --version
+    cmake --version

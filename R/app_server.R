@@ -8,7 +8,7 @@
 #' @importFrom golem get_golem_options
 #' @noRd
 
-app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) {
+app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL, gtf_path = NULL) {
   # make upload sizes infinitely large (the server will stop being responsive long before that, but hey if you don't mind waiting who am I to stop you)
   options(shiny.maxRequestSize=Inf)
   # function to reset all category sliders to default
@@ -38,25 +38,20 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
                     value = "")
   }
 
-  # general af_plot function
-  generate_af_plot <- function(df){
-    ggplot(df, aes(x = POS, y = 0, color = AF)) +
-      geom_point(size = 5) +
-      scale_color_gradient(low = "red", high = "green", name = "Frequency") +
-      geom_hline(yintercept = 0, color = "black", size = 0.5) +
-      theme_minimal() +
-      labs(
-        title = "Allele Frequencies",
-        x = "Genomic Position",
-        y = ""
-      ) +
-      theme(
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        panel.grid.major.y = element_blank(),
-        panel.grid.minor.y = element_blank()
-      )
-  }
+  # did we get a gtf? if not the whole gene track half of the af tab is skipped, both here
+  # and in the ui. everything else works exactly the same
+  have_gtf <- !is.null(norm_gtf_path)
+
+  # Load the GTF LAZILY. As a plain top-level call this blocked every session's
+  # startup for ~2 minutes, so output$sample_selector (and everything else) never
+  # got registered and the app looked dead. As a reactive it only loads the first
+  # time a gene track actually needs it (i.e. after a region is viewed), and the
+  # result is cached for the rest of the session.
+  annotation_df <- reactive({
+    withProgress(message = "Loading gene annotation...", value = NULL, {
+      load_gtf(norm_gtf_path)
+    })
+  })
 
   # enforce concordance with the samples actually in the provided vcf
   # make a reactive container to hold the currently available values for samples, as well as current samples for when we need to reset
@@ -139,7 +134,7 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
       selected = allowed_samples$samples
     )
   }), input$reselect_samples)
-
+  
   # make a list to store observers for our buttons
   obs_list <- list()
   # needs to be a reactive list when constructing this in this way
@@ -250,20 +245,29 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
   allele_freq_df <- NULL
   snipped_af_df <- NULL
   filtered_af_df <- NULL
+  # holds the currently-viewed region as strsplit() output; stays NULL until the
+  # user views a region, so plots that depend on it must guard against that
+  roi <- NULL
+  # the view box only asks for start-end, so the chromosome has to come from whatever
+  # we calculated (or the tsv that got uploaded). without it the gene track has no idea
+  # which chromosome those coordinates belong to
+  roi_chrom <- NULL
   # CALCULATE ALLELE FREQUENCIES IN A REGION
   # !!!!!!!!!!!! Handle making the user comfy and safe later! !!!!!!!!!!!!!!!
   bindEvent(observe({
     if (input$roi_text != ""){
       roi <- input$roi_text
       updateTextInput(session = session, inputId = "roi_text", value = "")
-      writeLines(as.character(input$selected_samples), "./output/samples.txt")
+      samples_file <- herder_scratch("samples.txt")
+      af_file <- herder_scratch("roi_af.tsv")
+      writeLines(as.character(input$selected_samples), samples_file)
       # run a call to fast.af
-        # fast_af.sh vcf_path region samplefile_path output_path
-      system(paste("./scripts/fast_af", norm_vcf_path, roi, 8, "./output/samples.txt", "./output/roi_af.tsv", sep = " "))
+        # fast_af vcf_path region threads samplefile_path output_path
+      run_herder_bin("fast_af", c(norm_vcf_path, roi, 8, samples_file, af_file))
       # withProgress(message = "Calculating Allele Frequencies...", value = 0, {
       #   incProgress(1/n, detail = paste("Finished Subregion ", i))
       # })
-      allele_freq_df <<- read.table("./output/roi_af.tsv", sep = "\t", header = TRUE)
+      allele_freq_df <<- read.table(af_file, sep = "\t", header = TRUE)
       output$calc_display <- renderText(paste("Current Calculated Region:\n", roi, sep = ""))
     }
   }), input$calculate_roi)
@@ -273,11 +277,28 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
     if (input$roi_view_text != "" & !is.null(allele_freq_df)){
       session$resetBrush("af_brush")
       roi <<- strsplit(input$roi_view_text,  "-")
+      # fast_af only ever writes one chromosome per run, so the first row tells us which
+      roi_chrom <<- as.character(allele_freq_df$CHR[1])
       snipped_af_df <<- allele_freq_df |> dplyr::filter((POS >= as.numeric(roi[[1]][1])), (POS <= as.numeric(roi[[1]][2])), as.numeric(AF) >= (input$af_cutoff_slider[1] / 100), as.numeric(AF) <= (input$af_cutoff_slider[2] / 100))
       output$af_plot <- renderPlot({
-        generate_af_plot(snipped_af_df) +
-          xlim(as.numeric(roi[[1]][1]), as.numeric(roi[[1]][2]))
+        generate_af_plot(snipped_af_df, as.numeric(roi[[1]][1]), as.numeric(roi[[1]][2]))
       })
+      if (have_gtf){
+        # populate the gene picker with whatever is annotated in the new region,
+        # starting from an empty selection so the track begins blank
+        region_genes <- genes_in_region(annotation_df(), roi_chrom,
+                                        as.numeric(roi[[1]][1]), as.numeric(roi[[1]][2]))
+        updatePickerInput(session = session, inputId = "gene_select",
+                          choices = region_genes, selected = character(0))
+        # render the gene track here too, so it re-renders whenever a region is
+        # viewed (roi is a plain var, not reactive, so it needs an explicit trigger);
+        # reading input$gene_select makes it redraw as the user picks genes
+        output$gene_track_plot <- renderPlot({
+          generate_gene_track_plot(annotation_df(), roi_chrom,
+                                   as.numeric(roi[[1]][1]), as.numeric(roi[[1]][2]),
+                                   input$gene_select)
+        })
+      }
       output$af_zoom_plot <- renderPlot({
         # render nothing at all, since we just reset the view
       })
@@ -296,12 +317,20 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
   bindEvent(observe({
     output$af_zoom_plot <- renderPlot({
       if (!is.null(input$af_brush$xmin)){
-        generate_af_plot(snipped_af_df) +
-          xlim(input$af_brush$xmin, input$af_brush$xmax) +
-          labs(title = "Zoomed Allele Frequencies")
+        generate_af_plot(snipped_af_df, input$af_brush$xmin, input$af_brush$xmax,
+                         title = "Zoomed Allele Frequencies", show_legend = FALSE)
       }
       # silent else here to pass nothing to the plot output if we don't have a brush, which will vanish it
     })
+    if (have_gtf){
+      output$gene_zoom_track_plot <- renderPlot({
+        if (!is.null(input$af_brush$xmin)){
+          generate_gene_track_plot(annotation_df(), roi_chrom,
+                                   input$af_brush$xmin, input$af_brush$xmax,
+                                   input$gene_select)
+        }
+      })
+    }
   }), input$af_brush)
 
   # display specific af click info
@@ -323,8 +352,11 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
   
   bindEvent(observe({
     if (input$save_name != ""){
-      writeLines(as.character(input$selected_samples), "./output/samples.txt")
-      system(paste("./scripts/vcf_trimmer", norm_vcf_path, "./output/samples.txt", paste(dirname(norm_vcf_path), "/", input$save_name, ".vcf.gz", sep = ""), sep = " "))
+      samples_file <- herder_scratch("samples.txt")
+      writeLines(as.character(input$selected_samples), samples_file)
+      run_herder_bin("vcf_trimmer", c(norm_vcf_path, samples_file,
+                                      file.path(dirname(norm_vcf_path),
+                                                paste0(input$save_name, ".vcf.gz"))))
       updateTextInput(session = session, inputId = "save_name", value = "")
     }
   }), input$vcf_generate_button)
@@ -334,14 +366,12 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
     if (!is.null(allele_freq_df)){
       snipped_af_df <<- allele_freq_df |> dplyr::filter(as.numeric(AF) >= (input$af_cutoff_slider[1] / 100), as.numeric(AF) <= (input$af_cutoff_slider[2] / 100), (POS >= as.numeric(roi[[1]][1])), (POS <= as.numeric(roi[[1]][2])))
       output$af_plot <- renderPlot({
-        generate_af_plot(snipped_af_df) +
-          xlim(as.numeric(roi[[1]][1]), as.numeric(roi[[1]][2]))
+        generate_af_plot(snipped_af_df, as.numeric(roi[[1]][1]), as.numeric(roi[[1]][2]))
       })
       output$af_zoom_plot <- renderPlot({
         if (!is.null(input$af_brush$xmin)){
-          generate_af_plot(snipped_af_df) +
-            xlim(input$af_brush$xmin, input$af_brush$xmax) +
-            labs(title = "Zoomed Allele Frequencies")
+          generate_af_plot(snipped_af_df, input$af_brush$xmin, input$af_brush$xmax,
+                           title = "Zoomed Allele Frequencies", show_legend = FALSE)
         }
       })
     }
@@ -365,6 +395,8 @@ app_server <- function(input, output, session, dataset = NULL, vcf_path = NULL) 
 
   bindEvent(observe({
     allele_freq_df <<- read.table(input$af_upload$datapath, sep = "\t", header = TRUE)
-    output$calc_display <- renderText(paste("Current Calculated Region:\n", "upload:", min(allele_freq_df$POS), "-", max(allele_freq_df$POS), sep = ""))
+    # grab the chromosome out of the upload too, so the gene track knows where it is
+    roi_chrom <<- as.character(allele_freq_df$CHR[1])
+    output$calc_display <- renderText(paste("Current Calculated Region:\n", "upload:", allele_freq_df$CHR[1], ":", min(allele_freq_df$POS), "-", max(allele_freq_df$POS), sep = ""))
   }), input$af_upload)
 }

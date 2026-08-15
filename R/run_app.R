@@ -2,6 +2,9 @@
 #'
 #' @param dataset A metadata sheet with sample information
 #' @param vcf_path A path to the vcf in question
+#' @param gtf_path Optional. A path to the gtf for the reference genome your data was
+#'   aligned to. Leave it out and the app runs without the gene track: the gene picker
+#'   and the two annotation panels are dropped, everything else is unchanged.
 #' @param ... arguments to pass to golem_opts.
 #' See `?golem::get_golem_options` for more details.
 #' @inheritParams shiny::shinyApp
@@ -12,6 +15,7 @@
 run_app <- function(
   dataset = NULL,
   vcf_path = NULL,
+  gtf_path = NULL,
   onStart = NULL,
   options = list(),
   enableBookmarking = NULL,
@@ -20,15 +24,15 @@ run_app <- function(
 ) {
   with_golem_options(
     app = shinyApp(
-      ui = app_ui(dataset = dataset, vcf_path = vcf_path),
+      ui = app_ui(dataset = dataset, vcf_path = vcf_path, gtf_path = gtf_path),
       server = function(input, output, session) {
-        app_server(input, output, session, dataset = dataset, vcf_path = vcf_path, ...)
+        app_server(input, output, session, dataset = dataset, vcf_path = vcf_path, gtf_path = gtf_path, ...)
       },
       onStart = onStart,
       options = options,
       enableBookmarking = enableBookmarking,
       uiPattern = uiPattern
     ),
-    golem_opts = list(dataset = dataset, vcf_path = vcf_path, ...)
+    golem_opts = list(dataset = dataset, vcf_path = vcf_path, gtf_path = gtf_path, ...)
   )
 }

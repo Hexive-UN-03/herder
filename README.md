@@ -1,181 +1,163 @@
-
 <!-- README.md is generated from README.Rmd. Please edit that file -->
+
+
 
 # `{herder}`
 
 <!-- badges: start -->
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![Codecov test coverage](https://codecov.io/gh/Hexive-UN-03/herder/graph/badge.svg)](https://app.codecov.io/gh/Hexive-UN-03/herder)
 <!-- badges: end -->
+
+A Shiny app for subsetting and visualizing large joint-called VCFs against a sample
+metadata sheet.
+
+Point it at a VCF, a metadata CSV and (optionally) a reference GTF, and you get:
+
+- **Subset selection** — filter your cohort interactively by breed, sex and age. Free-text
+  breed and sex spellings are collapsed automatically, and age is inferred from sex terms
+  where it's implied (a *yearling* is 1–2, a *filly* is under 4, a *mare* is over 4, and so
+  on). Save subsets, reload them, export the sample list, or write out a subset VCF.
+- **Allele frequencies** — compute AF over a region for the selected samples, plot it
+  against a gene/exon track on a shared axis, brush to zoom, click a variant for its
+  REF/ALT and frequency, and download the region as TSV.
+
+**No bcftools, no htslib, no compiler required.** Everything that touches a VCF is done by
+three small statically-linked programs shipped inside the package, so installation is just
+an R package install.
+
+## Requirements
+
+- R (>= 4.1 — the app uses the native `|>` pipe)
+- A **bgzipped and tabix-indexed** VCF (`your.vcf.gz` plus `your.vcf.gz.tbi` beside it).
+  An unindexed or uncompressed VCF will not work.
+- A metadata CSV with a sample-ID column, and ideally breed / sex / age columns. Columns
+  are matched by name — the first column whose name contains `ID` is the sample ID, and
+  likewise for `Breed`, `Sex` and `Age` (case-insensitive). Samples in the CSV that aren't
+  in the VCF are dropped.
+- Optionally, a GTF for your reference genome. Without one the app runs fine; you just
+  don't get the gene track.
 
 ## Installation
 
-You can install the development version of `{herder}` like so:
 
 ``` r
-# FILL THIS IN! HOW CAN PEOPLE INSTALL YOUR DEV PACKAGE?
+# install.packages("remotes")
+remotes::install_github("Hexive-UN-03/herder")
 ```
 
-## Run
+That's the whole thing on both platforms. The package has no `src/` directory, so nothing
+is compiled at install time — **you do not need Rtools on Windows** or a build toolchain on
+Linux.
 
-You can launch the application by running:
+### Linux
+
+Prebuilt static binaries for **x86-64** are bundled. Nothing else to do.
+
+### Windows
+
+Prebuilt static binaries for **64-bit Windows** are bundled. Nothing else to do.
+
+They're built against the UCRT runtime and link only `KERNEL32`, `WS2_32` and `msvcrt`, so
+there are no DLLs to install alongside them.
+
+### macOS, Linux on ARM, or anything else
+
+No binaries are bundled for these, so you'll need to build the three helper programs
+yourself. They're plain C++ over htslib and take a couple of minutes:
+
+```sh
+git clone https://github.com/Hexive-UN-03/herder.git
+cd herder/tools
+cmake --preset native
+cmake --build build/native -j8
+cmake --install build/native     # drops them into ../inst/scripts
+cd .. && R CMD INSTALL .
+```
+
+You'll need CMake (>= 3.19), autotools, and zlib/bzip2/lzma headers. htslib itself is
+fetched and built for you. Full details, including how to cross-compile the Windows
+binaries from Linux, are in [`tools/README.md`](tools/README.md).
+
+### Checking the install worked
+
 
 ``` r
-herder::run_app()
+# should print the path to the bundled binary for your platform
+herder:::herder_bin("fast_af")
 ```
+
+## Running it
+
+
+``` r
+library(herder)
+
+run_app(
+  dataset  = "path/to/sample_metadata.csv",
+  vcf_path = "path/to/joint_call.vcf.gz",
+  gtf_path = "path/to/reference.gtf.gz"   # optional
+)
+```
+
+`gtf_path` is optional. Leave it out and the app runs without the gene track — the gene
+picker and the two annotation panels are simply not shown, and everything else behaves
+identically:
+
+
+``` r
+run_app(
+  dataset  = "path/to/sample_metadata.csv",
+  vcf_path = "path/to/joint_call.vcf.gz"
+)
+```
+
+Worth knowing: a whole-genome GTF takes a minute or two to read. It's loaded lazily, only
+once, and only when a gene track actually needs to be drawn — so startup isn't blocked by
+it, and if you never view a region you never pay for it.
+
+### Using the app
+
+1. **Select Subset → Manual Selection.** Narrow the cohort with the breed, sex and age
+   controls; the sample list on the right updates to match. Name the subset and
+   **Save Subset**, or **Generate VCF** to write a subset VCF next to your input.
+2. **Saved Subsets.** Focus a saved subset back into the selectors, download its sample
+   list, or delete it. You can also upload an existing list of sample names under
+   *Select Subset → Upload Sample List*.
+3. **Allele Frequencies.** Enter a region as `chr1:1-2000000` and **Calculate** — this runs
+   `fast_af` over your selected samples. Then enter a sub-range as `1-2000000` and **View**
+   to plot it. Pick genes to draw on the track, drag across the top plot to zoom, and click
+   a variant in the zoomed plot to see its details. Both **Download** buttons export TSV.
+
+You can also skip the calculation step and upload a previously computed `roi_af.tsv`.
+
+## Performance
+
+`fast_af` is multithreaded and the cost is dominated by reading and parsing the region
+rather than by cohort size. Over a 10 Mb region of a 967-sample joint call, on 4 cores:
+
+| Samples in subset | 1 | 10 | 100 | 400 | 967 |
+|---|---|---|---|---|---|
+| Wall-clock | 2.6 s | 2.7 s | 3.3 s | 4.7 s | 7.2 s |
+
+That's about 2.6 s of fixed cost whatever the cohort size, then roughly 0.5 s per
+additional 100 samples — the full cohort costs only 2.8× a single sample. Threading scales
+close to linearly up to the number of physical cores available and then degrades, so don't
+ask for more threads than you have cores.
+
+## Development
+
+Built with [`{golem}`](https://thinkr-open.github.io/golem/).
+
+
+``` r
+# from a clone of the repo
+pkgload::load_all(".")
+testthat::test_dir("tests/testthat")
+```
+
+`dev/run_dev.R` launches the app against a local dataset for development.
 
 ## About
 
 You are reading the doc about version : 0.0.1.0
-
-This README has been compiled on the
-
-``` r
-Sys.time()
-#> [1] "2026-02-24 08:35:02 CST"
-```
-
-Here are the tests results and package coverage:
-
-``` r
-devtools::check(quiet = TRUE)
-#> ℹ Loading herder
-#> ── R CMD check results ───────────────────────────────────── herder 0.0.1.0 ────
-#> Duration: 33.4s
-#> 
-#> ❯ checking tests ...
-#>   See below...
-#> 
-#> ❯ checking for executable files ... WARNING
-#>   Found the following executable files:
-#>     inst/scripts/fast_af
-#>     inst/scripts/sample_lister
-#>     inst/scripts/vcf_trimmer
-#>   Source packages should not contain undeclared executable files.
-#>   See section ‘Package structure’ in the ‘Writing R Extensions’ manual.
-#> 
-#> ❯ checking installed package size ... NOTE
-#>     installed size is 21.1Mb
-#>     sub-directories of 1Mb or more:
-#>       scripts  21.0Mb
-#> 
-#> ❯ checking for future file timestamps ... NOTE
-#>   unable to verify current time
-#> 
-#> ❯ checking top-level files ... NOTE
-#>   Non-standard file/directory found at top level:
-#>     ‘dev’
-#> 
-#> ❯ checking package subdirectories ... NOTE
-#>   Problems with news in ‘NEWS.md’:
-#>   No news entries found.
-#> 
-#> ❯ checking R code for possible problems ... NOTE
-#>   app_server : reset_all_categories: no visible binding for global
-#>     variable ‘unique_breeds’
-#>   app_server : reset_all_categories: no visible binding for global
-#>     variable ‘unique_ages’
-#>   app_server : generate_af_plot: no visible binding for global variable
-#>     ‘POS’
-#>   app_server : generate_af_plot: no visible binding for global variable
-#>     ‘AF’
-#>   app_server: no visible binding for global variable ‘processed_csv’
-#>   app_server: no visible binding for global variable ‘Breed’
-#>   app_server: no visible binding for global variable ‘Sex’
-#>   app_server: no visible binding for global variable ‘Age’
-#>   app_server: no visible binding for global variable ‘unique_breeds’
-#>   app_server: no visible binding for global variable ‘norm_vcf_path’
-#>   app_server: no visible global function definition for ‘read.table’
-#>   app_server: no visible binding for global variable ‘POS’
-#>   app_server: no visible binding for global variable ‘AF’
-#>   app_server : <anonymous>: no visible global function definition for
-#>     ‘write.table’
-#>   app_server : <anonymous>: no visible binding for global variable ‘POS’
-#>   app_ui: no visible binding for '<<-' assignment to ‘norm_dataset’
-#>   app_ui: no visible binding for '<<-' assignment to ‘norm_vcf_path’
-#>   app_ui: no visible binding for global variable ‘norm_dataset’
-#>   app_ui: no visible binding for global variable ‘norm_vcf_path’
-#>   app_ui: no visible binding for global variable ‘unique_breeds’
-#>   app_ui: no visible binding for global variable ‘unique_ages’
-#>   process_csv: no visible global function definition for ‘read.csv’
-#>   process_csv: no visible binding for global variable ‘Horse_ID’
-#>   process_csv: no visible binding for '<<-' assignment to ‘unique_breeds’
-#>   process_csv: no visible binding for '<<-' assignment to ‘unique_ages’
-#>   process_csv: no visible binding for '<<-' assignment to ‘unique_sexes’
-#>   Undefined global functions or variables:
-#>     AF Age Breed Horse_ID POS Sex norm_dataset norm_vcf_path
-#>     processed_csv read.csv read.table unique_ages unique_breeds
-#>     write.table
-#>   Consider adding
-#>     importFrom("utils", "read.csv", "read.table", "write.table")
-#>   to your NAMESPACE file.
-#> 
-#> ── Test failures ───────────────────────────────────────────────── testthat ────
-#> 
-#> > # This file is part of the standard setup for testthat.
-#> > # It is recommended that you do not modify it.
-#> > #
-#> > # Where should you do additional test configuration?
-#> > # Learn more about the roles of various files in:
-#> > # * https://r-pkgs.org/testing-design.html#sec-tests-files-overview
-#> > # * https://testthat.r-lib.org/articles/special-files.html
-#> > 
-#> > library(testthat)
-#> > library(herder)
-#> > 
-#> > test_check("herder")
-#> Loading required package: shiny
-#> [ FAIL 2 | WARN 0 | SKIP 0 | PASS 7 ]
-#> 
-#> ══ Failed tests ════════════════════════════════════════════════════════════════
-#> ── Error ('test-golem-recommended.R:2:3'): app ui ──────────────────────────────
-#> Error in `path.expand(path)`: invalid 'path' argument
-#> Backtrace:
-#>     ▆
-#>  1. └─herder:::app_ui() at test-golem-recommended.R:2:3
-#>  2.   └─base::normalizePath(dataset)
-#>  3.     └─base::path.expand(path)
-#> ── Error ('test-golem-recommended.R:55:1'): (code run outside of `test_that()`) ──
-#> Error in `server(input = session$input, output = session$output, session = session)`: object 'processed_csv' not found
-#> Backtrace:
-#>      ▆
-#>   1. ├─shiny::testServer(...) at test-golem-recommended.R:55:1
-#>   2. │ ├─shiny:::withMockContext(...)
-#>   3. │ │ ├─shiny::isolate(...)
-#>   4. │ │ │ ├─shiny::..stacktraceoff..(...)
-#>   5. │ │ │ └─ctx$run(...)
-#>   6. │ │ │   ├─promises::with_promise_domain(...)
-#>   7. │ │ │   │ └─domain$wrapSync(expr)
-#>   8. │ │ │   ├─shiny::withReactiveDomain(...)
-#>   9. │ │ │   │ └─promises::with_promise_domain(...)
-#>  10. │ │ │   │   └─domain$wrapSync(expr)
-#>  11. │ │ │   │     └─base::force(expr)
-#>  12. │ │ │   ├─shiny::captureStackTraces(...)
-#>  13. │ │ │   │ └─promises::with_promise_domain(...)
-#>  14. │ │ │   │   └─domain$wrapSync(expr)
-#>  15. │ │ │   │     └─base::withCallingHandlers(expr, error = doCaptureStack)
-#>  16. │ │ │   └─env$runWith(self, func)
-#>  17. │ │ │     └─shiny (local) contextFunc()
-#>  18. │ │ │       └─shiny::..stacktraceon..(expr)
-#>  19. │ │ ├─shiny::withReactiveDomain(...)
-#>  20. │ │ │ └─promises::with_promise_domain(...)
-#>  21. │ │ │   └─domain$wrapSync(expr)
-#>  22. │ │ │     └─base::force(expr)
-#>  23. │ │ └─withr::with_options(...)
-#>  24. │ │   └─base::force(code)
-#>  25. │ └─herder (local) server(input = session$input, output = session$output, session = session)
-#>  26. │   └─shiny::reactiveValues(samples = processed_csv$Horse_ID)
-#>  27. │     └─rlang::list2(...)
-#>  28. └─base::.handleSimpleError(...)
-#>  29.   └─shiny (local) h(simpleError(msg, call))
-#> 
-#> [ FAIL 2 | WARN 0 | SKIP 0 | PASS 7 ]
-#> Error: Test failures
-#> Execution halted
-#> 
-#> 1 error ✖ | 1 warning ✖ | 5 notes ✖
-#> Error: R CMD check found ERRORs
-```
-
-``` r
-covr::package_coverage()
-#> Error in loadNamespace(x): there is no package called 'covr'
-```

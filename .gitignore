@@ -4,3 +4,11 @@
 .httr-oauth
 .DS_Store
 .quarto
+inst/doc
+/doc/
+/Meta/
+tools/build/
+inst/output/
+*.Rproj
+# local planning notes, not for the repo
+additions.txt

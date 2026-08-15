@@ -7,12 +7,28 @@
 #' @importFrom golem get_golem_options
 #' @noRd
 
-app_ui <- function(request, dataset = NULL, vcf_path = NULL) {
+app_ui <- function(request, dataset = NULL, vcf_path = NULL, gtf_path = NULL) {
   norm_dataset <<- normalizePath(dataset)
   norm_vcf_path <<- normalizePath(vcf_path)
-  print(getwd())
-  setwd(system.file(package = "herder"))
-  print(getwd())
+  # the gtf is optional. without one you still get everything except the gene track, which
+  # is a reasonable way to run if you haven't got an annotation for your reference (or just
+  # don't want to wait for a whole-genome gtf to load)
+  norm_gtf_path <<- if (is.null(gtf_path)) {
+    NULL
+  } else {
+    # if they did hand us a path, a typo in it should say so now rather than turning into
+    # a broken plot panel two minutes later when the track first tries to draw
+    if (!file.exists(gtf_path)){
+      stop("gtf_path does not exist: ", gtf_path,
+           "\n  Leave gtf_path out entirely to run without the gene track.")
+    }
+    normalizePath(gtf_path)
+  }
+  have_gtf <- !is.null(norm_gtf_path)
+  # we used to setwd() into the installed package here so that "./scripts/..." and
+  # "./output/..." resolved. that's gone now: the helpers are found with herder_bin() and
+  # everything we write goes to herder_scratch(), so we can leave the user's working
+  # directory alone (it was also the reason downloads landed in odd places)
   tagList(
     # Leave this function for adding external resources
     golem_add_external_resources(),
@@ -92,12 +108,41 @@ app_ui <- function(request, dataset = NULL, vcf_path = NULL) {
                    textInput("roi_view_text", label = "Enter your region to view:", placeholder = "1-10000"), actionButton("view_roi", "View Allele Frequencies"), align = "left", width = 4
                  )
                ),
+               # no gtf, no gene picker. we know at UI build time whether we got one, so
+               # just leave the whole thing out rather than showing a control that can
+               # never be populated
+               if (have_gtf) fluidRow(
+                 column(
+                   pickerInput(
+                     inputId = "gene_select",
+                     label = "Genes to display on the track:",
+                     choices = NULL,
+                     multiple = TRUE,
+                     width = "100%",
+                     options = list(
+                       `actions-box` = TRUE,
+                       `live-search` = TRUE,
+                       size = 10,
+                       `selected-text-format` = "count > 2",
+                       `none-selected-text` = "View a region, then pick genes"
+                     )
+                   ),
+                   width = 8, offset = 2, align = "center"
+                 )
+               ),
                fluidRow(
+                 # these go in ONE column rather than one each, so bootstrap only works out
+                 # the gutter once and every plot is handed the same width. they have to
+                 # line up with each other, see track_geom() in plots.R
                  column(
-                   plotOutput("af_plot", brush = brushOpts("af_brush"), height = "1.25in"), width = 12
-                 ),
-                 column(
-                   plotOutput("af_zoom_plot", click = "af_zoom_click", height = "1.25in"), width = 12
+                   width = 12,
+                   # the af plots are taller than the tracks because they carry a title and
+                   # (on the top one) a colourbar underneath. heights don't affect the x
+                   # alignment at all, only the widths do
+                   plotOutput("af_plot", brush = brushOpts("af_brush"), height = "1.85in"),
+                   if (have_gtf) plotOutput("gene_track_plot", height = "1.25in"),
+                   plotOutput("af_zoom_plot", click = "af_zoom_click", height = "1.55in"),
+                   if (have_gtf) plotOutput("gene_zoom_track_plot", height = "1.25in")
                  )
                ),
                fluidRow(

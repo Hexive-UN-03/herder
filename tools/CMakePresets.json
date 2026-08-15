@@ -1,0 +1,30 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "native",
+      "displayName": "Native static (Release)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXE_LINKER_FLAGS": "-static -static-libstdc++ -static-libgcc",
+        "CMAKE_FIND_LIBRARY_SUFFIXES": ".a"
+      }
+    },
+    {
+      "name": "windows",
+      "displayName": "Windows x86_64 (cross, mingw-w64)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/windows",
+      "toolchainFile": "${sourceDir}/cmake/windows-toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "native",  "configurePreset": "native" },
+    { "name": "windows", "configurePreset": "windows" }
+  ]
+}

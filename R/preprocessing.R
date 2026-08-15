@@ -1,4 +1,6 @@
-source("R/platonics.R")
+# (there used to be a source("R/platonics.R") here. it isn't needed, R collates everything
+# in R/ into the package anyway, and it only worked at all while the working directory
+# happened to be the package root)
 
 # function that turns age-based sex information into inferred ages and changes the sex column to reflect more broad categories
 sex_changer <- function(data_frame, sex_column_name){
@@ -73,13 +75,10 @@ sex_changer <- function(data_frame, sex_column_name){
 # preferable so that I never have to update it manually, and so that it hopefully lives on past me
 # might be better to return a list of the declared variables here, since that's cleaner, but I'm mostly using this function as a way of simplifying a code block and putting it somewhere else
 process_csv <- function(filename, validation_vcf_path){
-  if (!dir.exists("./output")) {
-    dir.create("./output")
-  }
-
   # get vcf samples
-  system(paste("./scripts/sample_lister", validation_vcf_path, "./output/vcf_samples.txt", sep = " "))
-  con = file("./output/vcf_samples.txt", "r")
+  samples_out <- herder_scratch("vcf_samples.txt")
+  run_herder_bin("sample_lister", c(validation_vcf_path, samples_out))
+  con = file(samples_out, "r")
   vcf_samples <- readLines(con = con)
   close(con)
 
@@ -115,4 +114,35 @@ process_csv <- function(filename, validation_vcf_path){
   unique_ages <<- unique(processed_csv$Age)
   unique_sexes <<- unique(processed_csv$Sex)
   return()
+}
+
+# pull one attribute (e.g. gene_name) out of the GTF attribute column for the
+# WHOLE vector at once. The old per-row sapply() took ~90s on a ~1.9M-row gtf
+# and, worse, collapsed to a list whenever a row had no match (crashing the
+# == fill below). This is fully vectorized and returns "" for non-matches.
+extract_gtf_attr <- function(x, key) {
+  m <- regexpr(paste0(key, ' "[^"]+"'), x)
+  out <- rep("", length(x))
+  out[m != -1] <- sub(paste0(key, ' "([^"]+)"'), "\\1",
+                      regmatches(x, m))
+  out
+}
+
+load_gtf <- function(path) {
+  # quote = "" is essential: by default read.delim treats " as a field-quote
+  # char and STRIPS the quotes out of the attribute column, after which the
+  # `key "value"` regex below matches nothing (this was the original bug).
+  gtf <- read.delim(path, header = FALSE, comment.char = "#", quote = "",
+                    col.names = c("seqname","source","feature","start","end",
+                                  "score","strand","frame","attribute"),
+                    stringsAsFactors = FALSE)
+
+  # only gene/exon are drawn by the track plot; dropping CDS roughly halves the
+  # rows we have to parse and keep around
+  gtf <- gtf |> dplyr::filter(feature %in% c("gene", "exon"))
+  gtf$gene_name <- extract_gtf_attr(gtf$attribute, "gene_name")
+  gtf$gene_id   <- extract_gtf_attr(gtf$attribute, "gene_id")
+  gtf$gene_name[gtf$gene_name == ""] <- gtf$gene_id[gtf$gene_name == ""]
+
+  gtf
 }
