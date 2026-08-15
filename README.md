@@ -12,7 +12,7 @@
 A Shiny app for subsetting and visualizing large joint-called VCFs against a sample
 metadata sheet.
 
-Point it at a VCF, a metadata CSV and (optionally) a reference GTF, and you get:
+Provide a VCF, a metadata CSV and (optionally) a reference GTF, and you get:
 
 - **Subset selection** — filter your cohort interactively by breed, sex and age. Free-text
   breed and sex spellings are collapsed automatically, and age is inferred from sex terms
@@ -40,44 +40,12 @@ an R package install.
 
 ## Installation
 
+For both windows and linux:
 
 ``` r
 # install.packages("remotes")
 remotes::install_github("Hexive-UN-03/herder")
 ```
-
-That's the whole thing on both platforms. The package has no `src/` directory, so nothing
-is compiled at install time — **you do not need Rtools on Windows** or a build toolchain on
-Linux.
-
-### Linux
-
-Prebuilt static binaries for **x86-64** are bundled. Nothing else to do.
-
-### Windows
-
-Prebuilt static binaries for **64-bit Windows** are bundled. Nothing else to do.
-
-They're built against the UCRT runtime and link only `KERNEL32`, `WS2_32` and `msvcrt`, so
-there are no DLLs to install alongside them.
-
-### macOS, Linux on ARM, or anything else
-
-No binaries are bundled for these, so you'll need to build the three helper programs
-yourself. They're plain C++ over htslib and take a couple of minutes:
-
-```sh
-git clone https://github.com/Hexive-UN-03/herder.git
-cd herder/tools
-cmake --preset native
-cmake --build build/native -j8
-cmake --install build/native     # drops them into ../inst/scripts
-cd .. && R CMD INSTALL .
-```
-
-You'll need CMake (>= 3.19), autotools, and zlib/bzip2/lzma headers. htslib itself is
-fetched and built for you. Full details, including how to cross-compile the Windows
-binaries from Linux, are in [`tools/README.md`](tools/README.md).
 
 ### Checking the install worked
 
@@ -112,9 +80,7 @@ run_app(
 )
 ```
 
-Worth knowing: a whole-genome GTF takes a minute or two to read. It's loaded lazily, only
-once, and only when a gene track actually needs to be drawn — so startup isn't blocked by
-it, and if you never view a region you never pay for it.
+Note: a whole-genome GTF takes a minute or two to read.
 
 ### Using the app
 
