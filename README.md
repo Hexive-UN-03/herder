@@ -106,11 +106,6 @@ rather than by cohort size. Over a 10 Mb region of a 967-sample joint call, on 4
 |---|---|---|---|---|---|
 | Wall-clock | 2.6 s | 2.7 s | 3.3 s | 4.7 s | 7.2 s |
 
-That's about 2.6 s of fixed cost whatever the cohort size, then roughly 0.5 s per
-additional 100 samples — the full cohort costs only 2.8× a single sample. Threading scales
-close to linearly up to the number of physical cores available and then degrades, so don't
-ask for more threads than you have cores.
-
 ## Development
 
 Built with [`{golem}`](https://thinkr-open.github.io/golem/).
@@ -123,7 +118,3 @@ testthat::test_dir("tests/testthat")
 ```
 
 `dev/run_dev.R` launches the app against a local dataset for development.
-
-## About
-
-You are reading the doc about version : 0.0.1.0
